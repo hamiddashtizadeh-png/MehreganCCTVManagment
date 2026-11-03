@@ -98,23 +98,42 @@ export const LiveCameraFeedTile: React.FC<LiveCameraFeedTileProps> = ({
     };
   }, [useWebcamLive]);
 
-  // Periodically try fetching real snapshot if custom streamUrl is provided
+  // Periodically fetch real camera snapshot frames from backend proxy or streamUrl
   useEffect(() => {
-    if (!camera.streamUrl) {
-      setRemoteFrameLoaded(false);
-      return;
-    }
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      remoteImgRef.current = img;
-      setRemoteFrameLoaded(true);
+    let timer: NodeJS.Timeout;
+    let isActive = true;
+
+    const fetchSnapshotFrame = () => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+
+      // Use custom streamUrl if specified, otherwise hit local backend snapshot proxy endpoint
+      const targetSrc = camera.streamUrl || `/api/camera/${camera.id}/snapshot?t=${Date.now()}`;
+
+      img.onload = () => {
+        if (!isActive) return;
+        remoteImgRef.current = img;
+        setRemoteFrameLoaded(true);
+      };
+      img.onerror = () => {
+        if (!isActive) return;
+        // If snapshot endpoint fails (e.g. offline or unauthenticated), fallback to canvas scene
+        setRemoteFrameLoaded(false);
+      };
+      img.src = targetSrc;
     };
-    img.onerror = () => {
-      setRemoteFrameLoaded(false);
+
+    // Initial fetch
+    fetchSnapshotFrame();
+
+    // Poll live frame every 1200ms
+    timer = setInterval(fetchSnapshotFrame, 1200);
+
+    return () => {
+      isActive = false;
+      clearInterval(timer);
     };
-    img.src = camera.streamUrl;
-  }, [camera.streamUrl]);
+  }, [camera.id, camera.streamUrl, camera.ipAddress, camera.httpPort]);
 
   // Main real-time render + Frame Differencing Motion Detection loop
   useEffect(() => {

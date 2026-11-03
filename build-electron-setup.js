@@ -9,15 +9,13 @@ console.log('===================================================');
 console.log('  AriaVMS Pro - Electron Setup Generator Script');
 console.log('===================================================\n');
 
-// 1. Ensure /electron directory exists
 const electronDir = path.join(__dirname, 'electron');
 if (!fs.existsSync(electronDir)) {
   fs.mkdirSync(electronDir, { recursive: true });
   console.log('✔ Created /electron directory');
 }
 
-// 2. Generate electron/main.js
-const mainJsContent = `import { app, BrowserWindow, shell, ipcMain } from 'electron';
+const mainJsContent = `import { app, BrowserWindow, shell, ipcMain, session } from 'electron';
 import { fork } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -54,7 +52,6 @@ function checkServerReady(url, timeout = 25000) {
 function startBackendServer() {
   const serverPath = path.resolve(__dirname, '..', 'server.ts');
   
-  // Launch Express backend using tsx CLI
   serverProcess = fork(serverPath, [], {
     execArgv: ['--import', 'tsx'],
     env: { ...process.env, PORT: String(PORT), NODE_ENV: 'production' }
@@ -65,8 +62,28 @@ function startBackendServer() {
   });
 }
 
+function setupLocalProxyRules() {
+  const filter = { urls: ['http://192.168.*/*', 'http://10.*/*', 'http://172.16.*/*', 'http://localhost:*/*'] };
+
+  session.defaultSession.webRequest.onHeadersReceived(filter, (details, callback) => {
+    const responseHeaders = { ...details.responseHeaders };
+    responseHeaders['Access-Control-Allow-Origin'] = ['*'];
+    responseHeaders['Access-Control-Allow-Methods'] = ['GET, POST, PUT, DELETE, OPTIONS'];
+    responseHeaders['Access-Control-Allow-Headers'] = ['*'];
+    responseHeaders['Access-Control-Allow-Credentials'] = ['true'];
+    callback({ responseHeaders });
+  });
+
+  session.defaultSession.webRequest.onBeforeSendHeaders(filter, (details, callback) => {
+    const requestHeaders = { ...details.requestHeaders };
+    requestHeaders['Origin'] = SERVER_URL;
+    callback({ requestHeaders });
+  });
+}
+
 async function createWindow() {
   const preloadPath = path.resolve(__dirname, 'preload.js');
+  setupLocalProxyRules();
 
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -80,11 +97,11 @@ async function createWindow() {
       preload: preloadPath,
       nodeIntegration: false,
       contextIsolation: true,
-      webSecurity: false // Bypasses CORS restrictions for camera RTSP/HTTP CGI/ONVIF streams
+      webSecurity: false,
+      allowRunningInsecureContent: true
     }
   });
 
-  // Intercept links to external browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('http:') || url.startsWith('https:')) {
       if (!url.includes(\`localhost:\${PORT}\`)) {
@@ -95,8 +112,7 @@ async function createWindow() {
     return { action: 'allow' };
   });
 
-  // Wait for Express server to start
-  const isReady = await checkServerReady(SERVER_URL);
+  await checkServerReady(SERVER_URL);
   mainWindow.loadURL(SERVER_URL);
 
   mainWindow.on('closed', () => {
@@ -104,7 +120,6 @@ async function createWindow() {
   });
 }
 
-// System info IPC Handler
 ipcMain.handle('get-system-info', () => {
   return {
     platform: process.platform,
@@ -147,12 +162,10 @@ app.on('will-quit', () => {
 `;
 
 fs.writeFileSync(path.join(electronDir, 'main.js'), mainJsContent, 'utf-8');
-console.log('✔ Generated /electron/main.js (CORS bypass & Windows paths configured)');
+console.log('✔ Generated /electron/main.js with local proxy rules');
 
-// 3. Generate electron/preload.js
 const preloadJsContent = `import { contextBridge, ipcRenderer } from 'electron';
 
-// Expose safe desktop bindings to web interface
 contextBridge.exposeInMainWorld('electronAPI', {
   isElectron: true,
   platform: process.platform,
@@ -164,11 +177,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 fs.writeFileSync(path.join(electronDir, 'preload.js'), preloadJsContent, 'utf-8');
 console.log('✔ Generated /electron/preload.js');
 
-// 4. Update package.json
 const pkgPath = path.join(__dirname, 'package.json');
 if (fs.existsSync(pkgPath)) {
   const pkgData = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
-
   pkgData.main = 'electron/main.js';
   pkgData.scripts = pkgData.scripts || {};
   pkgData.scripts.electron = 'electron .';
@@ -191,10 +202,9 @@ if (fs.existsSync(pkgPath)) {
   };
 
   fs.writeFileSync(pkgPath, JSON.stringify(pkgData, null, 2), 'utf-8');
-  console.log('✔ Updated package.json with Electron entry, scripts, and electron-builder NSIS config');
+  console.log('✔ Updated package.json');
 }
 
 console.log('\n===================================================');
 console.log('  Electron Setup Complete!');
-console.log('  Run "npm run electron" to launch the desktop app.');
 console.log('===================================================\n');
