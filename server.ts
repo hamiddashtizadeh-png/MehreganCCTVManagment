@@ -313,6 +313,11 @@ async function fetchWithCameraAuth(
   try {
     // Step 1: Initial request with Basic Auth if credentials provided, or unauthenticated to catch Digest challenge
     const initialHeaders: Record<string, string> = { ...headers };
+    if (username && password && !initialHeaders['Authorization']) {
+      const basicToken = Buffer.from(`${username}:${password}`).toString('base64');
+      initialHeaders['Authorization'] = `Basic ${basicToken}`;
+    }
+
     const res1 = await fetch(urlStr, {
       method,
       headers: initialHeaders,
@@ -1255,18 +1260,29 @@ async function startServer() {
     }
 
     const host = cam.httpPort === 80 ? cam.ipAddress : `${cam.ipAddress}:${cam.httpPort}`;
+    const userPassQuery1 = cam.password ? `user=${encodeURIComponent(cam.username)}&pwd=${encodeURIComponent(cam.password)}` : '';
+    const userPassQuery2 = cam.password ? `username=${encodeURIComponent(cam.username)}&password=${encodeURIComponent(cam.password)}` : '';
+
     const candidates = [
       cam.streamUrl,
       cam.endpoints?.httpSnapshotUrl,
       `http://${host}/cgi-bin/snapshot.cgi?channel=${cam.channel}`,
       `http://${host}/cgi-bin/snapshot.cgi`,
+      `http://${host}/cgi-bin/snapshot.cgi?chn=${cam.channel}`,
+      userPassQuery1 ? `http://${host}/cgi-bin/snapshot.cgi?channel=${cam.channel}&${userPassQuery1}` : null,
+      userPassQuery2 ? `http://${host}/cgi-bin/snapshot.cgi?channel=${cam.channel}&${userPassQuery2}` : null,
       `http://${host}/ISAPI/Streaming/channels/${cam.channel}01/picture`,
       `http://${host}/ISAPI/Streaming/channels/101/picture`,
+      `http://${host}/ISAPI/Streaming/channels/1/picture`,
+      `http://${host}/Streaming/channels/101/picture`,
       `http://${host}/onvif/snapshot`,
+      `http://${host}/onvif-media/media_service/snapshot`,
       `http://${host}/snapshot.jpg`,
+      `http://${host}/snap.jpg`,
       `http://${host}/jpeg`,
     ].filter(Boolean) as string[];
 
+    let lastStatus = 502;
     for (const targetUrl of candidates) {
       try {
         const resp = await fetchWithCameraAuth(targetUrl, {
@@ -1275,6 +1291,7 @@ async function startServer() {
           timeoutMs: 1500,
         });
 
+        lastStatus = resp.status;
         if (resp.ok && resp.buffer && resp.buffer.length > 200) {
           const contentType = resp.headers.get('content-type') || 'image/jpeg';
           res.setHeader('Access-Control-Allow-Origin', '*');
@@ -1289,8 +1306,8 @@ async function startServer() {
       }
     }
 
-    res.status(502).json({
-      error: `عدم دریافت تصویر زنده از IP آدرس ${cam.ipAddress}:${cam.httpPort} (بررسی یوزر/پسورد یا پورت HTTP)`,
+    res.status(lastStatus === 401 || lastStatus === 403 ? lastStatus : 502).json({
+      error: `عدم دریافت تصویر زنده از IP آدرس ${cam.ipAddress}:${cam.httpPort} (کد HTTP ${lastStatus} - نام کاربری admin یا رمز عبور را بررسی کنید)`,
     });
   });
 

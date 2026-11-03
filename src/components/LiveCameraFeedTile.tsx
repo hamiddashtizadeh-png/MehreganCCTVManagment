@@ -16,6 +16,14 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowRight,
+  Eye,
+  EyeOff,
+  KeyRound,
+  RefreshCw,
+  Lock,
+  CheckCircle2,
+  AlertTriangle,
+  Play,
 } from 'lucide-react';
 import { CameraDevice } from '../types/nvr';
 import { BRAND_METADATA } from '../utils/cameraProtocols';
@@ -55,6 +63,7 @@ export const LiveCameraFeedTile: React.FC<LiveCameraFeedTileProps> = ({
   const remoteImgRef = useRef<HTMLImageElement | null>(null);
   const prevPixelSampleRef = useRef<Uint8ClampedArray | null>(null);
   const lastMotionTriggerTimeRef = useRef<number>(0);
+  const triggerFetchRef = useRef<(() => void) | null>(null);
 
   const [ptzOffset, setPtzOffset] = useState({ pan: 0, tilt: 0, zoom: 1 });
   const [showPtzPad, setShowPtzPad] = useState(false);
@@ -62,6 +71,19 @@ export const LiveCameraFeedTile: React.FC<LiveCameraFeedTileProps> = ({
   const [motionActive, setMotionActive] = useState(false);
   const [useWebcamLive, setUseWebcamLive] = useState(Boolean(camera.useLocalDeviceCamera));
   const [remoteFrameLoaded, setRemoteFrameLoaded] = useState(false);
+
+  // Inline Quick Password Connect States
+  const [inlineUsername, setInlineUsername] = useState(camera.username || 'admin');
+  const [inlinePassword, setInlinePassword] = useState(camera.password || '');
+  const [showPasswordText, setShowPasswordText] = useState(false);
+  const [isConnectingInline, setIsConnectingInline] = useState(false);
+  const [connectMessage, setConnectMessage] = useState<string | null>(null);
+  const [useDemoSimulation, setUseDemoSimulation] = useState(false);
+
+  useEffect(() => {
+    setInlineUsername(camera.username || 'admin');
+    setInlinePassword(camera.password || '');
+  }, [camera.username, camera.password]);
 
   // Register frame getter for parent ISP optimizer or manual triggers
   useEffect(() => {
@@ -123,6 +145,8 @@ export const LiveCameraFeedTile: React.FC<LiveCameraFeedTileProps> = ({
       img.src = targetSrc;
     };
 
+    triggerFetchRef.current = fetchSnapshotFrame;
+
     // Initial fetch
     fetchSnapshotFrame();
 
@@ -133,7 +157,39 @@ export const LiveCameraFeedTile: React.FC<LiveCameraFeedTileProps> = ({
       isActive = false;
       clearInterval(timer);
     };
-  }, [camera.id, camera.streamUrl, camera.ipAddress, camera.httpPort]);
+  }, [camera.id, camera.streamUrl, camera.ipAddress, camera.httpPort, camera.password, camera.username]);
+
+  const handleQuickConnect = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setIsConnectingInline(true);
+    setConnectMessage(null);
+
+    try {
+      const res = await fetch('/api/camera/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...camera,
+          username: inlineUsername,
+          password: inlinePassword,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.camera) {
+        setConnectMessage('اطلاعات ثبت شد. در حال بازخوانی تصویر زنده...');
+        onEditConnection(data.camera);
+        if (triggerFetchRef.current) {
+          triggerFetchRef.current();
+        }
+      } else {
+        setConnectMessage(data.error || 'احراز هویت انجام نشد. رمز عبور را بررسی کنید.');
+      }
+    } catch {
+      setConnectMessage('خطا در ارتباط با سرور NVR.');
+    } finally {
+      setIsConnectingInline(false);
+    }
+  };
 
   // Main real-time render + Frame Differencing Motion Detection loop
   useEffect(() => {
@@ -162,6 +218,7 @@ export const LiveCameraFeedTile: React.FC<LiveCameraFeedTileProps> = ({
             externalSource: extSource,
             ptzOffset,
             motionActive,
+            forceDemoScene: useDemoSimulation,
           });
 
           // Frame-Differencing Motion Engine (runs every 30 frames ~0.5s)
@@ -215,7 +272,7 @@ export const LiveCameraFeedTile: React.FC<LiveCameraFeedTileProps> = ({
 
     animId = requestAnimationFrame(renderLoop);
     return () => cancelAnimationFrame(animId);
-  }, [camera, ptzOffset, useWebcamLive, remoteFrameLoaded, motionActive]);
+  }, [camera, ptzOffset, useWebcamLive, remoteFrameLoaded, motionActive, useDemoSimulation]);
 
   const handlePtzMove = async (
     dir: 'up' | 'down' | 'left' | 'right' | 'zoom_in' | 'zoom_out' | 'reset'
@@ -360,26 +417,135 @@ export const LiveCameraFeedTile: React.FC<LiveCameraFeedTileProps> = ({
           className="w-full h-full object-cover block"
         />
 
-        {/* Live Stream Auth / Loading Warning Overlay */}
-        {!remoteFrameLoaded && !useWebcamLive && (
-          <div className="absolute inset-x-3 top-3 bg-slate-900/90 border border-amber-500/40 backdrop-blur-xs rounded-lg px-3 py-2 text-amber-200 text-xs flex items-center justify-between gap-2 shadow-lg z-10">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
-              <span className="truncate text-[11px] font-medium">
-                استریم زنده از آدرس ({camera.ipAddress}): جهت نمایش تصویر واقعی دوربین، نام کاربری و رمز عبور را تنظیم کنید
-              </span>
-            </div>
+        {/* Demo simulation active badge */}
+        {useDemoSimulation && (
+          <div className="absolute top-3 left-3 bg-slate-900/90 border border-blue-500/50 backdrop-blur-xs rounded-lg px-2.5 py-1 text-blue-200 text-[11px] flex items-center gap-2 shadow-lg z-10">
+            <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+            <span>حالت شبیه‌ساز تصویری (تست) فعال است</span>
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                onEditConnection(camera);
+                setUseDemoSimulation(false);
               }}
-              className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[10px] rounded transition-colors whitespace-nowrap cursor-pointer shrink-0"
+              className="mr-1 px-2 py-0.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-[10px] rounded transition-colors cursor-pointer"
             >
-              ورود رمز عبور دوربین
+              اتصال به IP واقعی
             </button>
           </div>
+        )}
+
+        {/* Live Stream Auth / Direct Interactive Connection Overlay */}
+        {!remoteFrameLoaded && !useWebcamLive && !useDemoSimulation && (
+          <>
+            {/* Top Warning Strip */}
+            <div className="absolute inset-x-3 top-3 bg-slate-900/90 border border-amber-500/40 backdrop-blur-xs rounded-lg px-3 py-1.5 text-amber-200 text-xs flex items-center justify-between gap-2 shadow-lg z-10">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+                <span className="truncate text-[11px] font-medium">
+                  عدم دریافت استریم زنده ({camera.ipAddress}:{camera.httpPort}): رمز عبور دوربین را وارد یا تست کنید
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEditConnection(camera);
+                }}
+                className="px-2 py-0.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[10px] rounded transition-colors whitespace-nowrap cursor-pointer shrink-0"
+              >
+                تنظیمات کامل IP
+              </button>
+            </div>
+
+            {/* Center Quick-Connect Form Overlay */}
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="absolute inset-0 bg-slate-950/85 backdrop-blur-xs flex flex-col items-center justify-center p-4 z-20"
+            >
+              <div className="bg-slate-900/95 border border-slate-700/80 rounded-2xl p-4 w-full max-w-sm shadow-2xl flex flex-col gap-3 text-right">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
+                    <span className="font-bold text-xs text-slate-100">
+                      ورود رمز عبور دوربین {camera.ipAddress}
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-blue-900/60 text-blue-300 border border-blue-700/40">
+                    {BRAND_METADATA[camera.brand].label}
+                  </span>
+                </div>
+
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  جهت دریافت تصویر زنده از IP دوربین ({camera.ipAddress}:{camera.httpPort})، رمز عبور را وارد و دکمه فراخوانی را بزنید:
+                </p>
+
+                <form onSubmit={handleQuickConnect} className="flex flex-col gap-2.5">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] font-medium text-slate-400 mb-1">نام کاربری</label>
+                      <input
+                        type="text"
+                        value={inlineUsername}
+                        onChange={(e) => setInlineUsername(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 focus:border-blue-500 focus:outline-none text-left font-mono"
+                        placeholder="admin"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-medium text-slate-400 mb-1">رمز عبور دوربین</label>
+                      <div className="relative">
+                        <input
+                          type={showPasswordText ? 'text' : 'password'}
+                          value={inlinePassword}
+                          onChange={(e) => setInlinePassword(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-2.5 py-1.5 text-xs text-slate-100 focus:border-blue-500 focus:outline-none text-left font-mono"
+                          placeholder="رمز..."
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPasswordText((v) => !v)}
+                          className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 p-0.5"
+                        >
+                          {showPasswordText ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {connectMessage && (
+                    <div className="text-[11px] text-amber-300 font-medium bg-amber-950/60 border border-amber-800/50 rounded px-2.5 py-1">
+                      {connectMessage}
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      type="submit"
+                      disabled={isConnectingInline}
+                      className="flex-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      {isConnectingInline ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <KeyRound className="w-3.5 h-3.5" />
+                      )}
+                      <span>ثبت رمز و فراخوانی تصویر</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setUseDemoSimulation(true)}
+                      className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-medium py-2 px-3 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+                      title="نمایش تصویر شبیه‌ساز برای تست قابلیت‌های ANPR"
+                    >
+                      حالت شبیه‌ساز
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </>
         )}
 
         {/* Floating Interactive PTZ Controller Overlay */}

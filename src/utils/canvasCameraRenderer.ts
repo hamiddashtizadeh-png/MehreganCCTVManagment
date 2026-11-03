@@ -103,6 +103,7 @@ export function renderCameraCanvasFrame(params: {
   externalSource?: HTMLVideoElement | HTMLImageElement | null;
   ptzOffset?: { pan: number; tilt: number; zoom: number };
   motionActive?: boolean;
+  forceDemoScene?: boolean;
 }) {
   const {
     ctx,
@@ -113,6 +114,7 @@ export function renderCameraCanvasFrame(params: {
     externalSource,
     ptzOffset = { pan: 0, tilt: 0, zoom: 1 },
     motionActive = false,
+    forceDemoScene = false,
   } = params;
 
   const isp = camera.ispSettings;
@@ -145,6 +147,8 @@ export function renderCameraCanvasFrame(params: {
     } catch {
       drawCameraSignalConnectingScreen(ctx, width, height, camera, tick);
     }
+  } else if (forceDemoScene) {
+    drawHighDetailSurveillanceScene(ctx, width, height, camera, tick);
   } else {
     // If custom user camera without live feed yet, show dark NVR signal screen
     if (!camera.id.startsWith('cam-tiandy-main') && !camera.id.startsWith('cam-hikvision-lobby') && !camera.id.startsWith('cam-dahua-yard')) {
