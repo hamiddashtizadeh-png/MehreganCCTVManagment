@@ -8,7 +8,6 @@ echo     AriaVMS Pro - Auto Setup & Launcher for Windows
 echo ===================================================
 echo.
 
-:: Check Node.js installation
 where node >nul 2>nul
 if %errorlevel% neq 0 (
     color 0C
@@ -19,22 +18,27 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-echo [1/3] Checking Node.js environment... OK.
+echo [1/4] Checking Node.js environment... OK.
 
-:: Check node_modules and install dependencies automatically if needed
 if not exist "node_modules\" (
-    echo [2/3] Installing application dependencies (npm install)...
+    echo [2/4] Installing application dependencies (npm install)...
     call npm install --legacy-peer-deps
 ) else (
-    echo [2/3] Dependencies already installed.
+    echo [2/4] Dependencies ready.
 )
 
-:: Check electron installation
 if not exist "node_modules\electron\" (
-    echo [3/3] Installing Electron desktop runner...
+    echo [3/4] Installing Electron desktop runner...
     call npm install --save-dev electron electron-builder --legacy-peer-deps
 ) else (
-    echo [3/3] Electron desktop runner ready.
+    echo [3/4] Electron desktop runner ready.
+)
+
+if not exist "dist\index.html" (
+    echo [4/4] Building web assets for desktop...
+    call npm run build
+) else (
+    echo [4/4] Desktop assets ready.
 )
 
 echo.

@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import http from 'http';
 import os from 'os';
+import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -13,7 +14,7 @@ let serverProcess = null;
 const PORT = process.env.PORT || 3000;
 const SERVER_URL = `http://localhost:${PORT}`;
 
-function checkServerReady(url, timeout = 25000) {
+function checkServerReady(url, timeout = 12000) {
   const start = Date.now();
   return new Promise((resolve) => {
     const interval = setInterval(() => {
@@ -28,56 +29,66 @@ function checkServerReady(url, timeout = 25000) {
           resolve(false);
         }
       });
-    }, 300);
+    }, 250);
   });
 }
 
 function startBackendServer() {
-  const serverPath = path.resolve(__dirname, '..', 'server.ts');
-  
-  serverProcess = fork(serverPath, [], {
-    execArgv: ['--import', 'tsx'],
-    env: { ...process.env, PORT: String(PORT), NODE_ENV: 'production' }
-  });
+  const isPackaged = app.isPackaged;
+  let serverPath;
+  let execArgv = [];
 
-  serverProcess.on('error', (err) => {
-    console.error('Express Server Error:', err);
-  });
+  if (isPackaged) {
+    serverPath = path.join(process.resourcesPath, 'app.asar', 'dist', 'server.js');
+    if (!fs.existsSync(serverPath)) {
+      serverPath = path.join(__dirname, '..', 'server.ts');
+      execArgv = ['--import', 'tsx'];
+    }
+  } else {
+    serverPath = path.resolve(__dirname, '..', 'server.ts');
+    execArgv = ['--import', 'tsx'];
+  }
+
+  try {
+    serverProcess = fork(serverPath, [], {
+      execArgv,
+      env: { ...process.env, PORT: String(PORT) }
+    });
+
+    serverProcess.on('error', (err) => {
+      console.error('Express Backend Server Error:', err);
+    });
+  } catch (err) {
+    console.error('Failed to start server process:', err);
+  }
 }
 
 /**
- * Configure Electron Network Session Local Proxy rules to bypass CORS
- * and handle custom HTTP Auth headers for LAN IP Cameras (Hikvision, Dahua, Tiandy, ONVIF)
+ * Configure Electron Network Session Local Proxy rules using valid Chromium pattern filters
  */
 function setupLocalProxyRules() {
-  const filter = { urls: ['http://192.168.*/*', 'http://10.*/*', 'http://172.16.*/*', 'http://localhost:*/*'] };
+  // Use Chromium valid URL pattern filter matchers
+  const filter = { urls: ['http://*/*', 'https://*/*'] };
 
-  // 1. Bypass CORS headers on incoming HTTP responses from LAN camera IP addresses
-  session.defaultSession.webRequest.onHeadersReceived(filter, (details, callback) => {
-    const responseHeaders = { ...details.responseHeaders };
-
-    // Inject permissive CORS headers
-    responseHeaders['Access-Control-Allow-Origin'] = ['*'];
-    responseHeaders['Access-Control-Allow-Methods'] = ['GET, POST, PUT, DELETE, OPTIONS'];
-    responseHeaders['Access-Control-Allow-Headers'] = ['*'];
-    responseHeaders['Access-Control-Allow-Credentials'] = ['true'];
-
-    callback({ responseHeaders });
-  });
-
-  // 2. Ensure custom Authorization & Range headers are preserved for camera snapshot / stream requests
-  session.defaultSession.webRequest.onBeforeSendHeaders(filter, (details, callback) => {
-    const requestHeaders = { ...details.requestHeaders };
-    requestHeaders['Origin'] = SERVER_URL;
-    callback({ requestHeaders });
-  });
+  try {
+    session.defaultSession.webRequest.onHeadersReceived(filter, (details, callback) => {
+      const responseHeaders = { ...details.responseHeaders };
+      responseHeaders['Access-Control-Allow-Origin'] = ['*'];
+      responseHeaders['Access-Control-Allow-Methods'] = ['GET, POST, PUT, DELETE, OPTIONS'];
+      responseHeaders['Access-Control-Allow-Headers'] = ['*'];
+      callback({ responseHeaders });
+    });
+  } catch (err) {
+    console.warn('Proxy rules notice:', err);
+  }
 }
 
 async function createWindow() {
   const preloadPath = path.resolve(__dirname, 'preload.js');
 
-  // Activate Local Proxy & CORS Bypass interceptors
-  setupLocalProxyRules();
+  try {
+    setupLocalProxyRules();
+  } catch {}
 
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -87,12 +98,13 @@ async function createWindow() {
     title: 'AriaVMS Pro - سیستم مدیریت ویدئویی و پلاک‌خوان',
     icon: path.resolve(__dirname, '..', 'public', 'icon.svg'),
     autoHideMenuBar: true,
+    show: true,
     webPreferences: {
       preload: preloadPath,
       nodeIntegration: false,
       contextIsolation: true,
-      webSecurity: false, // Bypasses cross-origin restrictions for LAN video streams & HTTP snapshots
-      allowRunningInsecureContent: true // Allows HTTP camera feeds inside HTTPS contexts
+      webSecurity: false,
+      allowRunningInsecureContent: true
     }
   });
 
@@ -106,8 +118,14 @@ async function createWindow() {
     return { action: 'allow' };
   });
 
-  await checkServerReady(SERVER_URL);
-  mainWindow.loadURL(SERVER_URL);
+  const loadApp = async () => {
+    await checkServerReady(SERVER_URL, 6000);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.loadURL(SERVER_URL).catch(() => {});
+    }
+  };
+
+  loadApp();
 
   mainWindow.on('closed', () => {
     mainWindow = null;
