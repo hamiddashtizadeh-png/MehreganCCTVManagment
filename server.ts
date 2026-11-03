@@ -1246,27 +1246,42 @@ async function startServer() {
       return;
     }
 
-    const targetUrl = cam.streamUrl || cam.endpoints.httpSnapshotUrl;
-    try {
-      const resp = await fetchWithCameraAuth(targetUrl, {
-        username: cam.username,
-        password: cam.password || '',
-        timeoutMs: 2500,
-      });
+    const host = cam.httpPort === 80 ? cam.ipAddress : `${cam.ipAddress}:${cam.httpPort}`;
+    const candidates = [
+      cam.streamUrl,
+      cam.endpoints?.httpSnapshotUrl,
+      `http://${host}/cgi-bin/snapshot.cgi?channel=${cam.channel}`,
+      `http://${host}/cgi-bin/snapshot.cgi`,
+      `http://${host}/ISAPI/Streaming/channels/${cam.channel}01/picture`,
+      `http://${host}/ISAPI/Streaming/channels/101/picture`,
+      `http://${host}/onvif/snapshot`,
+      `http://${host}/snapshot.jpg`,
+      `http://${host}/jpeg`,
+    ].filter(Boolean) as string[];
 
-      if (resp.ok && resp.buffer.length > 100) {
-        const contentType = resp.headers.get('content-type') || 'image/jpeg';
-        res.setHeader('Content-Type', contentType);
-        res.setHeader('Cache-Control', 'no-store');
-        res.send(resp.buffer);
-        return;
+    for (const targetUrl of candidates) {
+      try {
+        const resp = await fetchWithCameraAuth(targetUrl, {
+          username: cam.username,
+          password: cam.password || '',
+          timeoutMs: 1500,
+        });
+
+        if (resp.ok && resp.buffer && resp.buffer.length > 200) {
+          const contentType = resp.headers.get('content-type') || 'image/jpeg';
+          res.setHeader('Content-Type', contentType);
+          res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+          res.send(resp.buffer);
+          return;
+        }
+      } catch {
+        // Continue to next candidate URL
       }
-      res.status(502).json({ error: `عدم دریافت فریم از ${targetUrl} (کد وضعیت: ${resp.status})` });
-    } catch (error) {
-      res.status(504).json({
-        error: error instanceof Error ? error.message : 'عدم دسترسی مستقیم سرور به IP شبکه محلی دوربین',
-      });
     }
+
+    res.status(502).json({
+      error: `عدم دریافت تصویر زنده از IP آدرس ${cam.ipAddress}:${cam.httpPort} (بررسی یوزر/پسورد یا پورت HTTP)`,
+    });
   });
 
   // 9. AI Scene-Aware Camera ISP Optimizer (Gemini Vision)

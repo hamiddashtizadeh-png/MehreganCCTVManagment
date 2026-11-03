@@ -360,6 +360,28 @@ export const LiveCameraFeedTile: React.FC<LiveCameraFeedTileProps> = ({
           className="w-full h-full object-cover block"
         />
 
+        {/* Live Stream Auth / Loading Warning Overlay */}
+        {!remoteFrameLoaded && !useWebcamLive && (
+          <div className="absolute inset-x-3 top-3 bg-slate-900/90 border border-amber-500/40 backdrop-blur-xs rounded-lg px-3 py-2 text-amber-200 text-xs flex items-center justify-between gap-2 shadow-lg z-10">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+              <span className="truncate text-[11px] font-medium">
+                استریم زنده از آدرس ({camera.ipAddress}): جهت نمایش تصویر واقعی دوربین، نام کاربری و رمز عبور را تنظیم کنید
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEditConnection(camera);
+              }}
+              className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[10px] rounded transition-colors whitespace-nowrap cursor-pointer shrink-0"
+            >
+              ورود رمز عبور دوربین
+            </button>
+          </div>
+        )}
+
         {/* Floating Interactive PTZ Controller Overlay */}
         {showPtzPad && (
           <div
