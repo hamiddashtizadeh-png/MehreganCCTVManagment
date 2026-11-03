@@ -9,12 +9,21 @@ import fs from 'fs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Prevent unhandled errors from closing Electron
+process.on('uncaughtException', (err) => {
+  console.error('Electron Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Electron Unhandled Rejection:', reason);
+});
+
 let mainWindow = null;
 let serverProcess = null;
 const PORT = process.env.PORT || 3000;
 const SERVER_URL = `http://localhost:${PORT}`;
 
-function checkServerReady(url, timeout = 12000) {
+function checkServerReady(url, timeout = 15000) {
   const start = Date.now();
   return new Promise((resolve) => {
     const interval = setInterval(() => {
@@ -29,7 +38,7 @@ function checkServerReady(url, timeout = 12000) {
           resolve(false);
         }
       });
-    }, 250);
+    }, 200);
   });
 }
 
@@ -56,21 +65,16 @@ function startBackendServer() {
     });
 
     serverProcess.on('error', (err) => {
-      console.error('Express Backend Server Error:', err);
+      console.error('Express Backend Error:', err);
     });
   } catch (err) {
-    console.error('Failed to start server process:', err);
+    console.error('Failed to fork server process:', err);
   }
 }
 
-/**
- * Configure Electron Network Session Local Proxy rules using valid Chromium pattern filters
- */
 function setupLocalProxyRules() {
-  // Use Chromium valid URL pattern filter matchers
-  const filter = { urls: ['http://*/*', 'https://*/*'] };
-
   try {
+    const filter = { urls: ['http://*/*', 'https://*/*'] };
     session.defaultSession.webRequest.onHeadersReceived(filter, (details, callback) => {
       const responseHeaders = { ...details.responseHeaders };
       responseHeaders['Access-Control-Allow-Origin'] = ['*'];
@@ -78,17 +82,15 @@ function setupLocalProxyRules() {
       responseHeaders['Access-Control-Allow-Headers'] = ['*'];
       callback({ responseHeaders });
     });
-  } catch (err) {
-    console.warn('Proxy rules notice:', err);
+  } catch (e) {
+    console.warn('Proxy setup notice:', e);
   }
 }
 
 async function createWindow() {
   const preloadPath = path.resolve(__dirname, 'preload.js');
 
-  try {
-    setupLocalProxyRules();
-  } catch {}
+  setupLocalProxyRules();
 
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -118,14 +120,40 @@ async function createWindow() {
     return { action: 'allow' };
   });
 
-  const loadApp = async () => {
-    await checkServerReady(SERVER_URL, 6000);
+  // Initial loading HTML page so window is NEVER empty or blank
+  const loadingHtml = `
+    <!DOCTYPE html>
+    <html dir="rtl">
+    <head>
+      <meta charset="utf-8">
+      <title>AriaVMS Pro - در حال راه‌اندازی</title>
+      <style>
+        body { font-family: system-ui, sans-serif; background: #0f172a; color: #f8fafc; display: flex; height: 100vh; align-items: center; justify-content: center; margin: 0; }
+        .box { text-align: center; background: #1e293b; padding: 2rem 3rem; border-radius: 1rem; border: 1px solid #334155; }
+        .spinner { width: 40px; height: 40px; border: 4px solid #334155; border-top-color: #2563eb; border-radius: 50%; animation: spin 1s infinite linear; margin: 0 auto 1.5rem; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+      </style>
+    </head>
+    <body>
+      <div class="box">
+        <div class="spinner"></div>
+        <h2 style="margin:0 0 0.5rem 0; font-size: 1.25rem;">در حال راه‌اندازی AriaVMS Pro...</h2>
+        <p style="color:#94a3b8; font-size:0.875rem; margin:0;">در حال اتصال به سرور محلی و دوربین‌های شبکه</p>
+      </div>
+    </body>
+    </html>
+  `;
+  mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(loadingHtml)}`);
+
+  // Connect to SERVER_URL once active
+  const connectToServer = async () => {
+    const isReady = await checkServerReady(SERVER_URL, 15000);
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.loadURL(SERVER_URL).catch(() => {});
     }
   };
 
-  loadApp();
+  connectToServer();
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -159,7 +187,7 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   if (serverProcess) {
-    serverProcess.kill();
+    try { serverProcess.kill(); } catch {}
   }
   if (process.platform !== 'darwin') {
     app.quit();
@@ -168,6 +196,6 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   if (serverProcess) {
-    serverProcess.kill();
+    try { serverProcess.kill(); } catch {}
   }
 });
