@@ -162,7 +162,7 @@ export const LiveCameraFeedTile: React.FC<LiveCameraFeedTileProps> = ({
   const handleQuickConnect = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setIsConnectingInline(true);
-    setConnectMessage(null);
+    setConnectMessage('در حال اتصال به دوربین و اعتبارسنجی رمز عبور...');
 
     try {
       const res = await fetch('/api/camera/connect', {
@@ -176,10 +176,31 @@ export const LiveCameraFeedTile: React.FC<LiveCameraFeedTileProps> = ({
       });
       const data = await res.json();
       if (res.ok && data.camera) {
-        setConnectMessage('اطلاعات ثبت شد. در حال بازخوانی تصویر زنده...');
         onEditConnection(data.camera);
-        if (triggerFetchRef.current) {
-          triggerFetchRef.current();
+
+        // Immediately test fetching snapshot to verify camera feed
+        try {
+          const snapTest = await fetch(`/api/camera/${camera.id}/snapshot?t=${Date.now()}`);
+          if (snapTest.ok) {
+            setConnectMessage('اتصال موفق! تصویر زنده در حال نمایش است.');
+            setRemoteFrameLoaded(true);
+            if (triggerFetchRef.current) {
+              triggerFetchRef.current();
+            }
+          } else {
+            const errJson = await snapTest.json().catch(() => null);
+            setConnectMessage(
+              errJson?.error ||
+                (snapTest.status === 401
+                  ? 'رمز عبور اشتباه است (دوربین اجازه دسترسی نداد).'
+                  : `عدم دریافت تصویر از دوربین (کد ${snapTest.status}). پورت یا کابل شبکه را بررسی کنید.`)
+            );
+          }
+        } catch {
+          setConnectMessage('اطلاعات ذخیره شد؛ در حال تلاش مجدد برای دریافت تصویر...');
+          if (triggerFetchRef.current) {
+            triggerFetchRef.current();
+          }
         }
       } else {
         setConnectMessage(data.error || 'احراز هویت انجام نشد. رمز عبور را بررسی کنید.');

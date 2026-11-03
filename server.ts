@@ -311,12 +311,8 @@ async function fetchWithCameraAuth(
   const timer1 = setTimeout(() => controller1.abort(), timeoutMs);
 
   try {
-    // Step 1: Initial request with Basic Auth if credentials provided, or unauthenticated to catch Digest challenge
+    // Step 1: Initial request without credentials to receive the server's authentication challenge (Digest or Basic)
     const initialHeaders: Record<string, string> = { ...headers };
-    if (username && password && !initialHeaders['Authorization']) {
-      const basicToken = Buffer.from(`${username}:${password}`).toString('base64');
-      initialHeaders['Authorization'] = `Basic ${basicToken}`;
-    }
 
     const res1 = await fetch(urlStr, {
       method,
@@ -347,11 +343,12 @@ async function fetchWithCameraAuth(
     const timer2 = setTimeout(() => controller2.abort(), timeoutMs);
 
     try {
-      if (/^Digest/i.test(wwwAuth)) {
+      if (/(?:^|\s)Digest/i.test(wwwAuth)) {
         const digestParams = parseDigestHeader(wwwAuth);
         const realm = digestParams.realm || '';
         const nonce = digestParams.nonce || '';
-        const qop = digestParams.qop ? digestParams.qop.split(',')[0].trim() : '';
+        const rawQop = digestParams.qop || '';
+        const qop = rawQop ? rawQop.split(',')[0].trim().replace(/["']/g, '') : '';
         const opaque = digestParams.opaque;
         const nc = '00000001';
         const cnonce = crypto.randomBytes(8).toString('hex');
@@ -758,10 +755,15 @@ async function startServer() {
     });
   });
 
-  // 1.2 Deep Single-IP Diagnostic Probe (Port-by-port + Brand Fingerprinting)
+  // 1.2 Deep Single-IP Diagnostic Probe (Port-by-port + Brand Fingerprinting + Snapshot Test)
   app.post('/api/network/diagnose-ip', async (req, res) => {
     try {
-      const { ipAddress } = req.body as { ipAddress: string };
+      const { ipAddress, username = 'admin', password = '', channel = 1 } = req.body as {
+        ipAddress: string;
+        username?: string;
+        password?: string;
+        channel?: number;
+      };
       if (!ipAddress || typeof ipAddress !== 'string') {
         res.status(400).json({ error: 'آدرس IP نامعتبر است' });
         return;
@@ -827,15 +829,52 @@ async function startServer() {
         } catch {}
       }
 
+      // Test real snapshot retrieval with user's password
+      let snapshotSuccess = false;
+      let workingSnapshotUrl = '';
+      let snapshotError = '';
+
+      if (httpPort > 0) {
+        const host = httpPort === 80 ? trimmedIp : `${trimmedIp}:${httpPort}`;
+        const testCandidates = [
+          `http://${host}/cgi-bin/snapshot.cgi?channel=${channel}`,
+          `http://${host}/cgi-bin/snapshot.cgi`,
+          `http://${host}/ISAPI/Streaming/channels/${channel}01/picture`,
+          `http://${host}/ISAPI/Streaming/channels/101/picture`,
+          `http://${host}/onvif/snapshot`,
+          `http://${host}/snapshot.jpg`,
+          `http://${host}/snap.jpg`,
+        ];
+
+        for (const testUrl of testCandidates) {
+          try {
+            const snapRes = await fetchWithCameraAuth(testUrl, {
+              username,
+              password,
+              timeoutMs: 1200,
+            });
+            if (snapRes.ok && snapRes.buffer && snapRes.buffer.length > 200) {
+              snapshotSuccess = true;
+              workingSnapshotUrl = testUrl;
+              break;
+            } else if (snapRes.status === 401 || snapRes.status === 403) {
+              snapshotError = `احراز هویت رد شد (کد HTTP ${snapRes.status}) - رمز عبور دوربین اشتباه است`;
+            }
+          } catch {
+            // next
+          }
+        }
+      }
+
       const endpoints = buildCameraEndpoints({
         brand: detectedBrand,
         ipAddress: trimmedIp,
         httpPort: httpPort || 80,
         rtspPort: openPorts.includes(554) ? 554 : 554,
         onvifPort: openPorts.includes(8899) ? 8899 : 80,
-        username: 'admin',
-        password: '',
-        channel: 1,
+        username,
+        password,
+        channel,
       });
 
       res.json({
@@ -848,6 +887,9 @@ async function startServer() {
         webTitle,
         serverHeader: serverHeaderStr,
         authHeader: authHeaderStr,
+        snapshotSuccess,
+        workingSnapshotUrl,
+        snapshotError,
         recommendedEndpoints: endpoints,
       });
     } catch (error) {
