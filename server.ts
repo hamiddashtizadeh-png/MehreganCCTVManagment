@@ -700,6 +700,14 @@ async function startServer() {
   const app = express();
   app.use(express.json({ limit: '25mb' }));
 
+  // Global CORS Middleware for HTML5 Canvas untainting & IPC requests
+  app.use((_req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    next();
+  });
+
   const store = loadStore();
 
   // 1. Get full initial state
@@ -1269,6 +1277,8 @@ async function startServer() {
 
         if (resp.ok && resp.buffer && resp.buffer.length > 200) {
           const contentType = resp.headers.get('content-type') || 'image/jpeg';
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
           res.setHeader('Content-Type', contentType);
           res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
           res.send(resp.buffer);

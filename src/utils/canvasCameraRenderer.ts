@@ -143,10 +143,15 @@ export function renderCameraCanvasFrame(params: {
     try {
       ctx.drawImage(externalSource, 0, 0, width, height);
     } catch {
-      drawHighDetailSurveillanceScene(ctx, width, height, camera, tick);
+      drawCameraSignalConnectingScreen(ctx, width, height, camera, tick);
     }
   } else {
-    drawHighDetailSurveillanceScene(ctx, width, height, camera, tick);
+    // If custom user camera without live feed yet, show dark NVR signal screen
+    if (!camera.id.startsWith('cam-tiandy-main') && !camera.id.startsWith('cam-hikvision-lobby') && !camera.id.startsWith('cam-dahua-yard')) {
+      drawCameraSignalConnectingScreen(ctx, width, height, camera, tick);
+    } else {
+      drawHighDetailSurveillanceScene(ctx, width, height, camera, tick);
+    }
   }
 
   // WDR / HLC optical overlays
@@ -389,4 +394,75 @@ function drawOSDOverlay(
     ctx.textAlign = 'center';
     ctx.fillText(`تشخیص حرکت (${toPersianDigits(camera.motionSensitivity)}%)`, width - 70, height - 22);
   }
+}
+
+function drawCameraSignalConnectingScreen(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  camera: CameraDevice,
+  tick: number
+) {
+  // Deep dark industrial NVR background
+  ctx.fillStyle = '#090D16';
+  ctx.fillRect(0, 0, width, height);
+
+  // Technical grid pattern
+  ctx.strokeStyle = 'rgba(30, 41, 59, 0.6)';
+  ctx.lineWidth = 1;
+  const gridSize = 40;
+  for (let x = 0; x < width; x += gridSize) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, height);
+    ctx.stroke();
+  }
+  for (let y = 0; y < height; y += gridSize) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
+    ctx.stroke();
+  }
+
+  // Animated radar scan beam
+  const scanY = (tick * 2.5) % height;
+  const scanGrad = ctx.createLinearGradient(0, scanY - 25, 0, scanY);
+  scanGrad.addColorStop(0, 'rgba(37, 99, 235, 0)');
+  scanGrad.addColorStop(1, 'rgba(37, 99, 235, 0.25)');
+  ctx.fillStyle = scanGrad;
+  ctx.fillRect(0, scanY - 25, width, 25);
+
+  ctx.strokeStyle = '#3B82F6';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(0, scanY);
+  ctx.lineTo(width, scanY);
+  ctx.stroke();
+
+  // Center Status Box
+  const boxW = 340;
+  const boxH = 110;
+  const boxX = (width - boxW) / 2;
+  const boxY = (height - boxH) / 2;
+
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(boxX, boxY, boxW, boxH, 8);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = '#60A5FA';
+  ctx.font = 'bold 13px "Vazirmatn", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(`در حال فراخوانی تصویر زنده از ${camera.ipAddress}:${camera.httpPort}`, width / 2, boxY + 32);
+
+  ctx.fillStyle = '#94A3B8';
+  ctx.font = '11px "Vazirmatn", sans-serif';
+  ctx.fillText(`نام کاربری: ${camera.username || 'admin'} | کانال: ${camera.channel}`, width / 2, boxY + 58);
+
+  ctx.fillStyle = '#F59E0B';
+  ctx.font = 'bold 11px "Vazirmatn", sans-serif';
+  ctx.fillText(`جهت نمایش تصویر واقعی، رمز عبور را در تنظیمات وارد کنید`, width / 2, boxY + 85);
 }
