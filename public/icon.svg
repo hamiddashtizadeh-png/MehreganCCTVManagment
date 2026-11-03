@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1D4ED8" />
+      <stop offset="100%" stop-color="#0F172A" />
+    </linearGradient>
+    <linearGradient id="lensGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="100%" stop-color="#2563EB" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" />
+  <rect x="88" y="136" width="336" height="240" rx="44" fill="#FFFFFF" fill-opacity="0.12" stroke="#FFFFFF" stroke-width="16" stroke-opacity="0.9" />
+  <circle cx="256" cy="256" r="82" fill="#0F172A" stroke="#FFFFFF" stroke-width="16" />
+  <circle cx="256" cy="256" r="46" fill="url(#lensGrad)" />
+  <circle cx="236" cy="236" r="14" fill="#FFFFFF" fill-opacity="0.85" />
+  <path d="M128 184 H164 M128 184 V220" stroke="#38BDF8" stroke-width="12" stroke-linecap="round" fill="none" />
+  <path d="M384 184 H348 M384 184 V220" stroke="#38BDF8" stroke-width="12" stroke-linecap="round" fill="none" />
+  <path d="M128 328 H164 M128 328 V292" stroke="#38BDF8" stroke-width="12" stroke-linecap="round" fill="none" />
+  <path d="M384 328 H348 M384 328 V292" stroke="#38BDF8" stroke-width="12" stroke-linecap="round" fill="none" />
+</svg>

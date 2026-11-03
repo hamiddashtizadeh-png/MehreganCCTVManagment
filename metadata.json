@@ -1,0 +1,10 @@
+{
+  "name": "AriaVMS Pro — سامانه هوشمند NVR، تشخیص پلاک و چهره",
+  "description": "نرم‌افزار پیشرفته NVR تحت شبکه برای ویندوز و موبایل با قابلیت اتصال هوشمند به دوربین‌های Tiandy، هایک‌ویژن، داهوا و ONVIF، تشخیص چهره و پلاک ملی و بین‌المللی، بهینه‌سازی خودکار تنظیمات تصویر و تشخیص حرکت.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

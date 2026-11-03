@@ -1,0 +1,40 @@
+{
+  "id": "/",
+  "name": "AriaVMS Pro — سامانه هوشمند NVR، تشخیص پلاک و چهره",
+  "short_name": "AriaVMS",
+  "description": "نرم‌افزار پیشرفته NVR تحت شبکه برای ویندوز و موبایل با اتصال هوشمند به دوربین‌های Tiandy، هایک‌ویژن، داهوا و ONVIF، تشخیص چهره و پلاک.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F8FAFC",
+  "theme_color": "#2563EB",
+  "dir": "rtl",
+  "lang": "fa",
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
